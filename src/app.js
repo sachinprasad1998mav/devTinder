@@ -1,5 +1,7 @@
 require("dotenv").config();
 const express = require("express");
+const bcrypt = require("bcrypt");
+const cookieParser = require("cookie-parser");
 const { connectDB } = require("./config/database");
 const { User } = require("./models/user");
 const {
@@ -11,6 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(cookieParser())
 
 // 1. SIGNUP: Create a user
 app.post("/signup", async (req, res) => {
@@ -18,13 +21,40 @@ app.post("/signup", async (req, res) => {
     // API level validation
     validateSignUpData(req);
 
-    const user = new User(req.body);
+    const { password } = req.body;
+
+    // Hashing password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = new User({
+      ...req.body,
+      password: passwordHash,
+    });
     await user.save();
     res.status(201).json({ message: "User added successfully", user });
   } catch (err) {
     res.status(400).send("Error saving the user: " + err.message);
   }
 });
+
+app.post("/login", async (req, res) => {
+  try{
+    const {emailId, password} = req.body;
+    const user = await User.findOne({emailId});
+    if(!user){
+      return res.status(404).send("Invalid credentials");
+    }
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if(!isPasswordValid){
+      return res.status(401).send("Invalid credentials");
+    }
+    res.send({ message: "Login successful", user });
+  } catch (err) {
+    res.status(400).send("Error logging in: " + err.message);
+  }
+})
+
+app.get("/profile", )
 
 // 2. GET USER: By Email (using query parameter: /user?emailId=...)
 app.get("/user", async (req, res) => {
