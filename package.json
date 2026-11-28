@@ -19,5 +19,11 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.12.3",
     "validator": "^13.15.35"
+  },
+  "devDependencies": {
+    "md-to-pdf": "^5.2.5"
+  },
+  "allowScripts": {
+    "puppeteer@25.19.0": true
   }
 }

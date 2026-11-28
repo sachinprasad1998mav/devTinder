@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const validator = require("validator");
+const jwt = require("jsonwebtoken");
 
 const userSchema = new mongoose.Schema(
   {
@@ -74,6 +75,20 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Instance method: generate a signed JWT for this user
+userSchema.methods.getJWT = function () {
+  return jwt.sign({ _id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
+};
+
+// Instance method: return a sanitized user object (no password)
+userSchema.methods.getUserSafeData = function () {
+  const { _id, firstName, lastName, emailId, photoUrl, about, skills, gender, age } =
+    this;
+  return { _id, firstName, lastName, emailId, photoUrl, about, skills, gender, age };
+};
 
 const User = mongoose.model("User", userSchema);
 

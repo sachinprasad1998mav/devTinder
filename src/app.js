@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt");
 const cookieParser = require("cookie-parser");
 const { connectDB } = require("./config/database");
 const { User } = require("./models/user");
+const { userAuth } = require("./middlewares/auth");
 const {
   validateSignUpData,
   validateEditProfileData,
@@ -15,7 +16,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cookieParser())
 
-// 1. SIGNUP: Create a user
+// 1. SIGNUP: Create a user (auto-login after signup)
 app.post("/signup", async (req, res) => {
   try {
     // API level validation
@@ -31,33 +32,61 @@ app.post("/signup", async (req, res) => {
       password: passwordHash,
     });
     await user.save();
-    res.status(201).json({ message: "User added successfully", user });
+
+    // Auto-login: issue JWT cookie immediately after signup
+    const token = user.getJWT();
+    res.cookie("token", token, {
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.status(201).json({
+      message: "User added successfully",
+      user: user.getUserSafeData(),
+    });
   } catch (err) {
     res.status(400).send("Error saving the user: " + err.message);
   }
 });
 
 app.post("/login", async (req, res) => {
-  try{
-    const {emailId, password} = req.body;
-    const user = await User.findOne({emailId});
-    if(!user){
+  try {
+    const { emailId, password } = req.body;
+    const user = await User.findOne({ emailId });
+    if (!user) {
       return res.status(404).send("Invalid credentials");
     }
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if(!isPasswordValid){
+    if (!isPasswordValid) {
       return res.status(401).send("Invalid credentials");
     }
-    res.send({ message: "Login successful", user });
+
+    // Generate JWT and set as httpOnly cookie
+    const token = user.getJWT();
+    res.cookie("token", token, {
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.json({ message: "Login successful", user: user.getUserSafeData() });
   } catch (err) {
     res.status(400).send("Error logging in: " + err.message);
   }
-})
+});
 
-app.get("/profile", )
+// LOGOUT: Clear the token cookie
+app.post("/logout", userAuth, (req, res) => {
+  res.cookie("token", "", { expires: new Date(0) });
+  res.json({ message: "Logged out successfully" });
+});
 
-// 2. GET USER: By Email (using query parameter: /user?emailId=...)
-app.get("/user", async (req, res) => {
+// PROFILE: Protected — only accessible with a valid token
+app.get("/profile", userAuth, (req, res) => {
+  res.json({ user: req.user.getUserSafeData() });
+});
+
+// 2. GET USER: By Email (protected)
+app.get("/user", userAuth, async (req, res) => {
   const userEmail = req.query.emailId || req.body.emailId;
 
   try {
@@ -71,8 +100,8 @@ app.get("/user", async (req, res) => {
   }
 });
 
-// 3. GET FEED / ALL USERS
-app.get("/feed", async (req, res) => {
+// 3. GET FEED / ALL USERS (protected)
+app.get("/feed", userAuth, async (req, res) => {
   try {
     const users = await User.find({});
     res.send(users);
@@ -81,8 +110,8 @@ app.get("/feed", async (req, res) => {
   }
 });
 
-// 4. DELETE USER: By ID (/user/:userId or fallback to req.body.userId)
-app.delete("/user/:userId?", async (req, res) => {
+// 4. DELETE USER: By ID (protected)
+app.delete("/user/:userId?", userAuth, async (req, res) => {
   const userId = req.params.userId || req.body.userId;
 
   try {
@@ -99,8 +128,8 @@ app.delete("/user/:userId?", async (req, res) => {
   }
 });
 
-// 5. UPDATE USER: With API validation and schema validation
-app.patch("/user/:userId?", async (req, res) => {
+// 5. UPDATE USER: With API validation and schema validation (protected)
+app.patch("/user/:userId?", userAuth, async (req, res) => {
   const userId = req.params.userId || req.body.userId;
 
   try {
